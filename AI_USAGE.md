@@ -1,102 +1,122 @@
 # AI Usage Documentation
 
-This document describes how AI (specifically OpenAI's GPT-4o-mini and text-embedding-3-small) is used in this application.
+This document describes how AI tools were used in building this project, what I designed myself, and decisions made after reviewing AI-generated code.
 
-## Overview
+---
 
-The application uses AI in two ways:
-1. **Chat Completion**: Generating conversational responses with optional memory extraction
-2. **Text Embeddings**: Converting text to vectors for semantic similarity search
+## AI Tools Used
 
-## Chat Completion
+### 1. Code Generation & Architecture
 
-### Model: gpt-4o-mini
+**Tool**: [PLACEHOLDER: e.g., GitHub Copilot / ChatGPT / Claude]
 
-**Purpose**: Generate helpful responses to user messages while optionally extracting and managing long-term memories.
+**What it was used for**:
+- [PLACEHOLDER: List specific tasks AI helped with, e.g., "Generating initial Express.js boilerplate", "Suggesting database schema", "Writing validation schemas"]
+- [PLACEHOLDER: Add more items]
 
-**Configuration**:
+**What I designed/changed myself**:
+- [PLACEHOLDER: List architectural decisions you made, e.g., "Memory conflict detection thresholds", "Memory gate heuristics", "Separation of concerns in service layer"]
+- [PLACEHOLDER: Add more items]
+
+### 2. Chat Completion (Runtime AI)
+
+**Model**: OpenAI gpt-4o-mini
+
+**Used for**:
+- Generating conversational responses
+- Extracting memory operations from user messages (when memory gate triggers)
+
+**Configuration chosen by me**:
 - Temperature: 0.4 (balanced creativity/consistency)
-- Response format: JSON mode (`response_format: { type: "json_object" }`)
-- Max tokens: 1024 (configurable via `LLM_MAX_TOKENS`)
-- Timeout: 30000ms (configurable via `LLM_TIMEOUT_MS`)
+- JSON response format for structured output
+- Max tokens: 1024
 
-### Prompt Structure
+**Decisions after reviewing AI behavior**:
+- [PLACEHOLDER: e.g., "Tuned memory extraction prompts after AI was saving too many temporary facts", "Added third-person writing requirement after AI used first-person"]
+- [PLACEHOLDER: Add more items]
 
-The system prompt follows this structure:
+### 3. Text Embeddings (Runtime AI)
 
-```
-You are a helpful AI assistant. Be concise, friendly, and helpful.
+**Model**: OpenAI text-embedding-3-small (512 dimensions)
 
-You respond in JSON format. Always include a "reply" field with your response to the user.
+**Used for**:
+- Converting memories to vectors for semantic search
+- Finding relevant memories when responding to user queries
 
-Known facts about the user (use only if relevant, never mention that you have a memory system unless asked):
-- [primary_language] User primarily works with JavaScript/TypeScript
-- [company] User works at Acme Corp
+**My design decisions**:
+- Chose 512 dimensions (vs 1536) to reduce costs while maintaining quality
+- Set similarity thresholds: 0.92 (duplicate), 0.82 (conflict), 0.7 (retrieval)
+- Decided to embed `key:content` format for better semantic matching
 
-[If memory gate is true, memory extraction instructions are appended]
+---
 
-Response format (JSON):
-{
-  "reply": "Your response to the user",
-  "memory_ops": [...]
-}
-```
+## What I Designed Myself
 
-### Memory Extraction Instructions
+1. **Memory Gate Heuristic**: [PLACEHOLDER: Explain your reasoning for the keyword patterns]
+2. **Conflict Detection**: [PLACEHOLDER: Explain why you chose those similarity thresholds]
+3. **Database Schema**: [PLACEHOLDER: Explain your schema design decisions]
+4. **API Structure**: [PLACEHOLDER: Explain your REST API design choices]
+5. **[PLACEHOLDER: Add more items you designed]**
 
-When the memory gate triggers (see below), the prompt includes these instructions:
+---
 
-- Save only stable, long-term facts about the user
-- Never save questions, one-off tasks, or general knowledge
-- Use preferred keys: `name`, `profession`, `primary_language`, `primary_database`, etc.
+## Decisions After Reviewing AI-Generated Code
+
+| AI Suggestion | My Decision | Reasoning |
+|---------------|-------------|-----------|
+| [PLACEHOLDER] | [PLACEHOLDER] | [PLACEHOLDER] |
+| [PLACEHOLDER] | [PLACEHOLDER] | [PLACEHOLDER] |
+| [PLACEHOLDER] | [PLACEHOLDER] | [PLACEHOLDER] |
+
+---
+
+## Code I Wrote vs AI-Assisted
+
+### Primarily My Code
+- [PLACEHOLDER: List files/modules you wrote mostly yourself]
+
+### AI-Assisted Then Modified
+- [PLACEHOLDER: List files/modules where AI helped but you made significant changes]
+
+### AI-Generated With Minimal Changes
+- [PLACEHOLDER: List files/modules that AI generated and you used mostly as-is]
+
+---
+
+## Lessons Learned
+
+1. [PLACEHOLDER: What did you learn about working with AI tools?]
+2. [PLACEHOLDER: What would you do differently next time?]
+3. [PLACEHOLDER: Where was AI most/least helpful?]
+
+---
+
+## Technical Details (Runtime AI Usage)
+
+### Memory Gate
+
+The memory gate is a regex-based filter that determines if a message might contain savable information. It runs **before** the LLM call to reduce token usage by ~60-80%.
+
+**Trigger patterns**: Personal pronouns (i, my, me), memory-related terms (remember, prefer, switched), Hindi pronouns (mera, meri, mujhe)
+
+### Memory Extraction Prompt
+
+When the gate triggers, the LLM receives instructions to:
+- Save only stable, long-term facts (not questions or tasks)
+- Use semantic keys like `primary_language`, `company`, `preference_*`
 - Write content in third person
 - Return `memory_ops: []` if nothing worth saving
 
-### Memory Operations Format
+### Response Format
 
 ```json
 {
-  "action": "upsert" | "remove",
-  "key": "primary_database",
-  "content": "User primarily works with PostgreSQL",
-  "category": "technical"
+  "reply": "Your response to the user",
+  "memory_ops": [
+    { "action": "upsert", "key": "company", "content": "User works at Acme Corp", "category": "personal" }
+  ]
 }
 ```
-
-## Memory Gate
-
-The memory gate is a **heuristic filter** that determines whether a message might contain personal information worth saving. It runs **before** the LLM call.
-
-### Why It Exists
-
-- Reduces unnecessary token usage by ~60-80%
-- Avoids asking the LLM to extract memories from messages like "What's 2+2?"
-- Simple regex matching is much faster than LLM inference
-
-### Trigger Keywords
-
-The gate matches on word boundaries (case-insensitive):
-
-**English personal pronouns and phrases**:
-- i, i'm, im, i've, ive, i'd
-- my, me, mine, myself
-- we, we're, our, us
-- name's
-
-**Memory-related terms**:
-- remember
-- actually, now, currently
-- migrated, switched, prefer
-
-**Hindi personal pronouns**:
-- mera, meri, mujhe, main
-
-### Gate Behavior
-
-| Gate Result | Memory Instructions in Prompt | Memory Processing |
-|-------------|-------------------------------|-------------------|
-| `true` | Included | Process any `memory_ops` from response |
-| `false` | Not included | Skip memory processing |
 
 ## Text Embeddings
 

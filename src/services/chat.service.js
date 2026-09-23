@@ -62,23 +62,26 @@ export const chatService = {
       let retrievedMemories = [];
       let allCandidates = [];
       let existingKeys = [];
-      let existingMemoriesForPrompt = [];
 
-      console.log(`\n[Memory] Active memories in DB: ${memoryCount}, User ID: ${user.id}`);
-      console.log(`[Memory] Min similarity threshold: ${config.MEMORY_MIN_SIMILARITY}`);
+      if (config.NODE_ENV === 'development') {
+        console.log(`\n[Memory] Active memories in DB: ${memoryCount}, User ID: ${user.id}`);
+        console.log(`[Memory] Min similarity threshold: ${config.MEMORY_MIN_SIMILARITY}`);
+      }
 
       if (memoryCount > 0) {
         // Expand abbreviations in the query for better semantic matching
         const expandedQuery = expandAbbreviations(messageContent);
-        if (expandedQuery !== messageContent) {
+        if (config.NODE_ENV === 'development' && expandedQuery !== messageContent) {
           console.log(`[Memory] Expanded query: "${expandedQuery}"`);
         }
 
         // Embed the expanded user message for similarity search
         const queryEmbedding = await embedText(expandedQuery);
-        console.log(`[Memory] Query embedding generated, dimensions: ${queryEmbedding?.length}`);
+        if (config.NODE_ENV === 'development') {
+          console.log(`[Memory] Query embedding generated, dimensions: ${queryEmbedding?.length}`);
+        }
 
-        // Get ALL candidates with no threshold (for logging)
+        // Get ALL candidates with no threshold (for dev logging)
         allCandidates = await memoryRepository.matchMemories(
           queryEmbedding,
           user.id,
@@ -98,17 +101,11 @@ export const chatService = {
             const marker = m.similarity >= config.MEMORY_MIN_SIMILARITY ? '✓' : '✗';
             console.log(`  ${marker} [${m.memory_key}] "${m.content}" (similarity: ${m.similarity?.toFixed(4)})`);
           });
+          console.log(`[Memory] Matched memories (above threshold): ${retrievedMemories.length}`);
         }
 
-        console.log(`[Memory] Matched memories (above threshold): ${retrievedMemories.length}`);
-
-        // Get all active memories with content for prompt merge hints
-        const allActive = await memoryRepository.getByUser(user.id, 'active');
-        existingMemoriesForPrompt = allActive.map((m) => ({
-          memory_key: m.memory_key,
-          content: m.content,
-        }));
-        existingKeys = allActive.map((m) => m.memory_key);
+        // Get only the keys of active memories (not full content) for prompt merge hints
+        existingKeys = await memoryRepository.getActiveKeys(user.id);
       }
 
       // Populate usedMemories for the response
@@ -122,13 +119,16 @@ export const chatService = {
       const gateResult = shouldExtractMemory(messageContent);
 
       // Step 5: Build prompt and make LLM call
+      // Only send full content for retrieved memories; send only keys for others
+      const retrievedKeys = new Set(retrievedMemories.map((m) => m.memory_key));
+      const otherKeys = existingKeys.filter((k) => !retrievedKeys.has(k));
+
       const systemPrompt = buildSystemPrompt({
         memories: retrievedMemories.map((m) => ({
           memory_key: m.memory_key,
           content: m.content,
         })),
-        existingMemories: existingMemoriesForPrompt,
-        existingKeys,
+        existingKeys: otherKeys,
         includeMemoryInstructions: gateResult,
       });
 
@@ -138,18 +138,20 @@ export const chatService = {
         userMessage: messageContent,
       });
 
-      // DEBUG: Log what's being sent to LLM
-      console.log('\n========== LLM REQUEST ==========');
-      console.log('Retrieved Memories:', retrievedMemories.length);
-      retrievedMemories.forEach((m) => {
-        console.log(`  [${m.memory_key}] ${m.content} (similarity: ${m.similarity?.toFixed(4)})`);
-      });
-      console.log('\nMessages to LLM:');
-      messages.forEach((msg, i) => {
-        const preview = msg.content.length > 500 ? msg.content.substring(0, 500) + '...' : msg.content;
-        console.log(`  [${i}] ${msg.role}: ${preview}`);
-      });
-      console.log('==================================\n');
+      // DEBUG: Log what's being sent to LLM (development only)
+      if (config.NODE_ENV === 'development') {
+        console.log('\n========== LLM REQUEST ==========');
+        console.log('Retrieved Memories:', retrievedMemories.length);
+        retrievedMemories.forEach((m) => {
+          console.log(`  [${m.memory_key}] ${m.content} (similarity: ${m.similarity?.toFixed(4)})`);
+        });
+        console.log('\nMessages to LLM:');
+        messages.forEach((msg, i) => {
+          const preview = msg.content.length > 500 ? msg.content.substring(0, 500) + '...' : msg.content;
+          console.log(`  [${i}] ${msg.role}: ${preview}`);
+        });
+        console.log('==================================\n');
+      }
 
       // Step 6: Make EXACTLY ONE LLM call
       const rawResponse = await chatCompletion(messages);

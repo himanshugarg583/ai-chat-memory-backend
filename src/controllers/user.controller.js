@@ -1,4 +1,5 @@
 import { userService } from '../services/user.service.js';
+import { success } from '../utils/response.js';
 
 export const userController = {
   /**
@@ -9,11 +10,7 @@ export const userController = {
     try {
       const { name } = req.body;
       const user = await userService.startSession(name);
-
-      res.status(200).json({
-        success: true,
-        user,
-      });
+      return success(res, { user });
     } catch (error) {
       next(error);
     }
@@ -26,11 +23,7 @@ export const userController = {
   async newSession(req, res, next) {
     try {
       const user = await userService.newSession(req.user.id);
-
-      res.status(200).json({
-        success: true,
-        user,
-      });
+      return success(res, { user });
     } catch (error) {
       next(error);
     }

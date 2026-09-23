@@ -18,7 +18,7 @@ export const chatCompletion = async (messages) => {
       model: config.OPENAI_CHAT_MODEL,
       messages,
       response_format: { type: 'json_object' },
-      temperature: 0.4,
+      temperature: config.LLM_TEMPERATURE,
       max_tokens: config.LLM_MAX_TOKENS,
     });
 

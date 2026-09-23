@@ -11,60 +11,26 @@ A Node.js backend for an AI chat application with persistent memory extraction a
 - **Manual Memory Management**: CRUD operations for memories with duplicate/conflict detection
 - **Session Management**: Users can start new chat sessions while preserving long-term memories
 
-## Tech Stack
-
-- Node.js 18+ (ES Modules)
-- Express 4.18.2
-- @supabase/supabase-js 2.39.0
-- OpenAI SDK 4.24.0 (gpt-4o-mini + text-embedding-3-small)
-- Zod 3.22.4 (validation)
-- PostgreSQL with pgvector extension (via Supabase)
-
-## Project Structure
-
-```
-backend/
-├── public/
-│   └── index.html          # Test UI
-├── src/
-│   ├── config/
-│   │   ├── env.js          # Environment validation
-│   │   └── supabase.js     # Database client
-│   ├── controllers/        # Request handlers
-│   ├── integrations/       # External API clients (LLM, embeddings)
-│   ├── middleware/         # Express middleware
-│   ├── repositories/       # Database access layer
-│   ├── routes/             # API route definitions
-│   ├── services/           # Business logic
-│   │   ├── chat.service.js    # Chat flow orchestration
-│   │   ├── memory.service.js  # Memory CRUD + conflict detection
-│   │   ├── memoryGate.js      # Heuristic memory trigger
-│   │   └── promptBuilder.js   # LLM prompt construction
-│   ├── utils/
-│   │   └── AppError.js     # Error handling
-│   ├── validators/         # Zod schemas
-│   ├── app.js              # Express app setup
-│   └── server.js           # Entry point
-├── .env.example
-└── package.json
-
-database/
-└── migrations/
-    └── 001_init.sql        # Database schema
-```
+---
 
 ## Setup
 
-### 1. Database Setup
+### Prerequisites
+- Node.js 18+
+- Supabase account (free tier works)
+- OpenAI API key
 
-1. Create a Supabase project at https://supabase.com
-2. Run the migration in `database/migrations/001_init.sql` via the SQL Editor
+### 1. Supabase Setup
+
+1. Create a project at [supabase.com](https://supabase.com)
+2. Go to SQL Editor and run `database/migrations/001_init.sql`
 3. This creates:
-   - `users` table with session tracking
-   - `messages` table for chat history
-   - `memories` table with pgvector embeddings
-   - `match_memories` RPC function for similarity search
-   - `upsert_memory` RPC function for memory updates
+   - `users`, `messages`, `memories` tables
+   - pgvector extension for embeddings
+   - `match_memories` RPC for similarity search
+   - `upsert_memory` RPC for atomic memory updates
+
+> **Privacy Note**: All data is stored in your Supabase project. User messages and memories contain personal information. Ensure your Supabase project has appropriate access controls. Consider Row Level Security (RLS) for production.
 
 ### 2. Environment Configuration
 
@@ -73,10 +39,10 @@ cd backend
 cp .env.example .env
 ```
 
-Fill in your `.env`:
-```
+Required variables:
+```env
 SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SECRET_KEY=your-service-role-key
+SUPABASE_SECRET_KEY=your-service-role-key  # NOT the anon key
 OPENAI_API_KEY=sk-your-openai-key
 ```
 
@@ -84,62 +50,188 @@ OPENAI_API_KEY=sk-your-openai-key
 
 ```bash
 npm install
-npm run dev   # Development with --watch
+npm run dev   # Development with hot reload
 npm start     # Production
 ```
 
-Server runs at http://localhost:3000
+Server runs at http://localhost:8000
+
+---
+
+## Architecture
+
+### Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Runtime | Node.js 18+ (ES Modules) |
+| Framework | Express 4.18.2 |
+| Database | Supabase PostgreSQL + pgvector |
+| LLM | OpenAI gpt-4o-mini |
+| Embeddings | OpenAI text-embedding-3-small (512 dims) |
+| Validation | Zod 3.22.4 |
+
+### Project Structure
+
+```
+backend/
+├── src/
+│   ├── config/           # Environment & database config
+│   ├── controllers/      # HTTP request handlers
+│   ├── integrations/     # External API clients (OpenAI)
+│   ├── middleware/       # Auth, validation, error handling
+│   ├── repositories/     # Database access (queries)
+│   ├── services/         # Business logic
+│   │   ├── chat.service.js     # Chat orchestration
+│   │   ├── memory.service.js   # Memory CRUD + conflicts
+│   │   ├── memoryGate.js       # Heuristic filter
+│   │   └── promptBuilder.js    # LLM prompt construction
+│   ├── validators/       # Zod request schemas
+│   ├── app.js            # Express setup
+│   └── server.js         # Entry point
+└── database/migrations/  # SQL schema
+```
+
+### Request Flow
+
+```
+Client → Controller → Service → Repository → Database
+                  ↘ Integration → OpenAI
+```
+
+---
+
+## Memory Design
+
+### How Memories Work
+
+1. **Memory Gate** (heuristic): Checks if user message might contain savable info
+2. **LLM Extraction**: If gate passes, LLM prompt includes memory instructions
+3. **Vector Storage**: Each memory is embedded (512-dim) and stored with pgvector
+4. **Retrieval**: On each message, relevant memories are fetched via cosine similarity
+
+### Similarity Thresholds
+
+| Threshold | Value | Purpose |
+|-----------|-------|---------|
+| Duplicate | 0.92+ | Reject exact/near-duplicate memories |
+| Conflict | 0.82+ | Warn about semantically similar but different memories |
+| Retrieval | 0.70+ | Include in context when answering |
+
+### Memory Gate Keywords
+
+The gate triggers on personal pronouns and memory-related terms to avoid unnecessary LLM calls:
+
+- **English**: i, i'm, my, me, we, our, remember, prefer, switched, migrated
+- **Hindi**: mera, meri, mujhe, main
+
+---
+
+## Cost Optimization
+
+| Strategy | Impact |
+|----------|--------|
+| Memory Gate | Reduces memory extraction prompts by ~60-80% |
+| 512-dim embeddings | 3x cheaper than 1536-dim with similar quality |
+| Single LLM call | Chat + memory extraction in one request |
+| PostgreSQL similarity | No LLM call for retrieval (vector search only) |
+| Keys-only context | Only retrieved memories' content sent to LLM |
+
+### Estimated Costs (per 1000 messages)
+
+- Chat completion (gpt-4o-mini): ~$0.02-0.05
+- Embeddings: ~$0.001
+- Supabase: Free tier covers most use cases
+
+---
+
+## Trade-offs
+
+| Decision | Benefit | Drawback |
+|----------|---------|----------|
+| Memory gate heuristic | Fast, cheap filtering | May miss some savable content |
+| JSON mode for LLM | Structured output | Slightly higher latency |
+| 512-dim embeddings | Lower cost, faster | Slightly less precise than 1536 |
+| No RLS by default | Simpler setup | Requires service-role key |
+| Single LLM call | Lower latency | Can't retry memory extraction separately |
+
+---
+
+## Known Limitations
+
+1. **Memory gate is heuristic**: Messages without trigger words (e.g., "Born in Mumbai") won't trigger extraction
+2. **No multi-language support**: Gate keywords are English/Hindi only
+3. **Conflict detection is similarity-based**: May not catch semantic contradictions
+4. **No conversation summarization**: Long conversations increase token usage
+5. **Single-user sessions only**: No shared/team memories
+6. **No memory expiration**: Old memories persist indefinitely
+
+---
+
+## Manual Test Scenarios
+
+### 1. Basic Chat (No Memory)
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Start session | Get user ID |
+| 2 | Send "What is 2+2?" | Response with answer, no memory changes |
+| 3 | Check memories | Empty or unchanged |
+
+### 2. Memory Extraction
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Send "I work at Google" | Response acknowledges, memory created |
+| 2 | Check memories | See `company: User works at Google` |
+| 3 | Send "What company do I work at?" | Response references Google |
+
+### 3. Memory Conflict Detection
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Create memory "User prefers React" | Success |
+| 2 | Create similar "User likes React framework" | 409 Conflict with existing memory |
+| 3 | Replace via `replaceMemoryId` | New memory replaces old |
+
+### 4. Duplicate Prevention
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Create memory "User's name is Alice" | Success |
+| 2 | Create same memory again | 409 Duplicate error |
+
+### 5. Session Reset
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Send messages, verify history | Messages appear |
+| 2 | Call `/users/me/new-session` | Get new session ID |
+| 3 | Get messages | Empty (new session) |
+| 4 | Get memories | Memories persist (not session-scoped) |
+
+### 6. Memory Retrieval
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Create memory about Python preference | Success |
+| 2 | Ask "What's my favorite language?" | Response mentions Python, shows used memories |
+
+---
 
 ## API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/health` | Service health check |
-| POST | `/api/users/login` | Login/register by email |
-| POST | `/api/users/me/new-session` | Start new chat session |
-| GET | `/api/messages` | Get current session messages |
-| POST | `/api/chat` | Send message and get response |
-| GET | `/api/memories` | List user memories |
-| POST | `/api/memories` | Create memory manually |
+| POST | `/api/users/start-session` | Start anonymous session |
+| POST | `/api/users/me/new-session` | Reset chat, keep memories |
+| GET | `/api/messages` | Get session messages |
+| POST | `/api/chat` | Send message |
+| GET | `/api/memories` | List memories |
+| POST | `/api/memories` | Create memory |
 | PUT | `/api/memories/:id` | Update memory |
 | DELETE | `/api/memories/:id` | Delete memory |
 
 ### Authentication
 
-Pass `x-user-id` header with the user's UUID for authenticated endpoints.
+All endpoints (except health) require `x-user-id` header with the user's UUID.
 
-## Chat Flow
-
-1. Save user message to database
-2. Load session conversation history
-3. Retrieve relevant memories via vector similarity search
-4. Run memory gate (heuristic check for personal content)
-5. Build prompt with memories and optional memory extraction instructions
-6. Make ONE LLM call (JSON mode, temperature 0.4)
-7. Parse response and save assistant message
-8. If gate was true, process any `memory_ops` from response
-9. Update user message with memory status
-10. Return response with any memory changes
-
-## Memory Gate Keywords
-
-The memory gate triggers on personal pronouns and memory-related terms:
-- English: i, i'm, im, i've, ive, i'd, my, me, mine, we, we're, our, us, myself, name's, remember, actually, now, currently, migrated, switched, prefer
-- Hindi: mera, meri, mujhe, main
-
-## Cost Optimization
-
-- Memory gate reduces LLM calls by ~60-80%
-- Batch embedding API calls where possible
-- Vector similarity search happens in PostgreSQL (no LLM call)
-- Single LLM call per user message (not separate for memory extraction)
-
-## Test UI
-
-Open http://localhost:3000 in your browser for a simple test interface with:
-- Chat panel with conversation history
-- Memory panel showing stored facts
-- Manual memory creation
+---
 
 ## License
 

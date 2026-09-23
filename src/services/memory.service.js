@@ -52,57 +52,57 @@ export const memoryService = {
 
   /**
    * Create a manual memory with duplicate/conflict detection
+   * If replaceMemoryId is provided, reuse its key atomically via upsert_memory
    */
   async createMemory(userId, { content, category, memoryKey, replaceMemoryId }) {
-    const key = memoryKey || generateManualKey();
+    let key = memoryKey || generateManualKey();
 
-    // Generate embedding using key:content format for better matching
-    const textForEmbedding = formatMemoryForEmbedding(key, content);
-    const embedding = await embedText(textForEmbedding);
-
-    // Check for duplicates/conflicts among existing active memories
-    const existingMemories = await memoryRepository.getActiveWithEmbeddings(userId);
-
-    for (const existing of existingMemories) {
-      if (!existing.embedding) continue;
-
-      const similarity = cosineSimilarity(embedding, existing.embedding);
-
-      // Exact duplicate
-      if (similarity >= config.MEMORY_DUPLICATE_SIMILARITY) {
-        throw errors.duplicateMemory({
-          id: existing.id,
-          memoryKey: existing.memory_key,
-          content: existing.content,
-          similarity,
-        });
-      }
-
-      // Potential conflict
-      if (
-        similarity >= config.MEMORY_CONFLICT_SIMILARITY &&
-        existing.memory_key !== key &&
-        !replaceMemoryId
-      ) {
-        throw errors.memoryConflict({
-          id: existing.id,
-          memoryKey: existing.memory_key,
-          content: existing.content,
-          similarity,
-        });
-      }
-    }
-
-    // If replacing an existing memory, supersede it first
+    // If replacing, validate and reuse the replaced memory's key
     if (replaceMemoryId) {
       const toReplace = await memoryRepository.findById(replaceMemoryId);
       if (!toReplace || toReplace.user_id !== userId || toReplace.status !== 'active') {
         throw errors.notFound('Memory to replace');
       }
-      await memoryRepository.supersede(replaceMemoryId);
+      // Reuse the replaced memory's key for atomic upsert
+      key = toReplace.memory_key;
     }
 
-    // Use upsert to create the memory
+    // Generate embedding using key:content format for better matching
+    const textForEmbedding = formatMemoryForEmbedding(key, content);
+    const embedding = await embedText(textForEmbedding);
+
+    // Check for duplicates/conflicts among existing active memories (skip if replacing)
+    if (!replaceMemoryId) {
+      const existingMemories = await memoryRepository.getActiveWithEmbeddings(userId);
+
+      for (const existing of existingMemories) {
+        if (!existing.embedding) continue;
+
+        const similarity = cosineSimilarity(embedding, existing.embedding);
+
+        // Exact duplicate
+        if (similarity >= config.MEMORY_DUPLICATE_SIMILARITY) {
+          throw errors.duplicateMemory({
+            id: existing.id,
+            memoryKey: existing.memory_key,
+            content: existing.content,
+            similarity,
+          });
+        }
+
+        // Potential conflict
+        if (similarity >= config.MEMORY_CONFLICT_SIMILARITY && existing.memory_key !== key) {
+          throw errors.memoryConflict({
+            id: existing.id,
+            memoryKey: existing.memory_key,
+            content: existing.content,
+            similarity,
+          });
+        }
+      }
+    }
+
+    // Use upsert to create/replace the memory atomically (supersedes existing in one call)
     const result = await memoryRepository.upsertMemory(
       userId,
       key,

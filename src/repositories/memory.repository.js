@@ -86,6 +86,7 @@ export const memoryRepository = {
 
   /**
    * Get all active memories with embeddings for a user
+   * Note: Supabase returns pgvector columns as JSON strings; we parse them here.
    */
   async getActiveWithEmbeddings(userId) {
     const { data, error } = await supabase
@@ -100,7 +101,11 @@ export const memoryRepository = {
       throw errors.databaseUnavailable('Failed to fetch memories');
     }
 
-    return data || [];
+    // Parse pgvector string representation to number arrays
+    return (data || []).map((row) => ({
+      ...row,
+      embedding: typeof row.embedding === 'string' ? JSON.parse(row.embedding) : row.embedding,
+    }));
   },
 
   /**

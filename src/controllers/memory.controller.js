@@ -1,4 +1,5 @@
 import { memoryService } from '../services/memory.service.js';
+import { success, noContent } from '../utils/response.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
@@ -12,12 +13,7 @@ export const memoryController = {
     try {
       const { status } = req.query || { status: 'active' };
       const memories = await memoryService.getMemories(req.user.id, status);
-
-      res.status(200).json({
-        success: true,
-        count: memories.length,
-        memories,
-      });
+      return success(res, { memories, count: memories.length });
     } catch (error) {
       next(error);
     }
@@ -36,11 +32,7 @@ export const memoryController = {
         memoryKey,
         replaceMemoryId,
       });
-
-      res.status(201).json({
-        success: true,
-        memory,
-      });
+      return success(res, { memory }, 201);
     } catch (error) {
       next(error);
     }
@@ -55,11 +47,7 @@ export const memoryController = {
       const { id } = req.params;
       const updates = req.body;
       const memory = await memoryService.updateMemory(req.user.id, id, updates);
-
-      res.status(200).json({
-        success: true,
-        memory,
-      });
+      return success(res, { memory });
     } catch (error) {
       next(error);
     }
@@ -73,11 +61,7 @@ export const memoryController = {
     try {
       const { id } = req.params;
       await memoryService.deleteMemory(req.user.id, id);
-
-      res.status(200).json({
-        success: true,
-        message: 'Memory deleted successfully',
-      });
+      return noContent(res);
     } catch (error) {
       next(error);
     }
@@ -91,8 +75,7 @@ export const memoryController = {
     try {
       if (!req.file) {
         return res.status(400).json({
-          success: false,
-          error: { message: 'No PDF file uploaded' },
+          error: { code: 'VALIDATION_ERROR', message: 'No PDF file uploaded' },
         });
       }
 
@@ -102,8 +85,7 @@ export const memoryController = {
 
       if (!text) {
         return res.status(400).json({
-          success: false,
-          error: { message: 'Could not extract text from PDF' },
+          error: { code: 'VALIDATION_ERROR', message: 'Could not extract text from PDF' },
         });
       }
 
@@ -141,12 +123,11 @@ export const memoryController = {
         createdMemories.push(memory);
       }
 
-      res.status(201).json({
-        success: true,
+      return success(res, {
         message: `Created ${createdMemories.length} memories from PDF`,
         count: createdMemories.length,
         memories: createdMemories,
-      });
+      }, 201);
     } catch (error) {
       next(error);
     }

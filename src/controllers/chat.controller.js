@@ -1,4 +1,5 @@
 import { chatService } from '../services/chat.service.js';
+import { success } from '../utils/response.js';
 
 export const chatController = {
   /**
@@ -8,11 +9,7 @@ export const chatController = {
   async getMessages(req, res, next) {
     try {
       const messages = await chatService.getSessionMessages(req.user);
-
-      res.status(200).json({
-        success: true,
-        messages,
-      });
+      return success(res, { messages });
     } catch (error) {
       next(error);
     }
@@ -26,11 +23,7 @@ export const chatController = {
     try {
       const { message } = req.body;
       const result = await chatService.processMessage(req.user, message);
-
-      res.status(200).json({
-        success: true,
-        ...result,
-      });
+      return success(res, result);
     } catch (error) {
       next(error);
     }

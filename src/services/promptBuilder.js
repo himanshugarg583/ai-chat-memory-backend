@@ -6,17 +6,16 @@
 /**
  * Build the system prompt for chat
  * @param {Object} options
- * @param {Array} options.memories - Retrieved memories [{memory_key, content}]
- * @param {Array} options.existingMemories - All active memories with content (for merge hints)
- * @param {Array} options.existingKeys - List of existing memory keys not in memories (keys only)
+ * @param {Array} options.memories - Retrieved memories [{memory_key, content}] (full content)
+ * @param {Array} options.existingKeys - List of existing memory keys not in retrieved memories (keys only, no content)
  * @param {boolean} options.includeMemoryInstructions - Whether to include memory extraction rules
  */
-export const buildSystemPrompt = ({ memories = [], existingMemories = [], existingKeys = [], includeMemoryInstructions = false }) => {
+export const buildSystemPrompt = ({ memories = [], existingKeys = [], includeMemoryInstructions = false }) => {
   let prompt = `You are a helpful AI assistant. Be concise, friendly, and helpful.
 
 You respond in JSON format. Always include a "reply" field with your response to the user.`;
 
-  // Add memory context if available
+  // Add memory context if available (only retrieved memories get full content)
   if (memories.length > 0) {
     prompt += `
 
@@ -28,19 +27,10 @@ Known facts about the user. When they are relevant to the question, use them to 
 
   // Add memory extraction instructions only when gate is true
   if (includeMemoryInstructions) {
-    // Build list of existing memories with content for merge hints
-    let existingMemoryHints = '';
-    if (existingMemories.length > 0) {
-      existingMemoryHints = '\n\nExisting memories (for updates/merges):';
-      for (const mem of existingMemories) {
-        existingMemoryHints += `\n- [${mem.memory_key}] ${mem.content}`;
-      }
-    }
-    
-    // Add keys that weren't retrieved but exist
-    const otherKeys = existingKeys.filter(k => !existingMemories.some(m => m.memory_key === k));
-    if (otherKeys.length > 0) {
-      existingMemoryHints += `\nOther keys: [${otherKeys.join(', ')}]`;
+    // Only list other keys (no content) to save tokens
+    let existingKeyHints = '';
+    if (existingKeys.length > 0) {
+      existingKeyHints = `\n\nExisting memory keys (reuse these when updating): [${existingKeys.join(', ')}]`;
     }
 
     prompt += `
@@ -60,7 +50,7 @@ Memory rules:
 - If updating an existing fact, REUSE the existing key
 - One fact per key. A language change must not touch primary_database, etc.
 - Use "remove" when the user says a fact is no longer true and provides no replacement
-- If nothing is worth saving, return "memory_ops": []${existingMemoryHints}
+- If nothing is worth saving, return "memory_ops": []${existingKeyHints}
 
 Response format (JSON):
 {
