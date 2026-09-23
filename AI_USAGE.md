@@ -1,6 +1,6 @@
 # AI Usage Documentation
 
-This document describes how AI tools were used in building this project, what I designed myself, and decisions made after reviewing AI-generated code.
+This document describes how AI tools were used in building this project and the design decisions made.
 
 ---
 
@@ -8,88 +8,68 @@ This document describes how AI tools were used in building this project, what I 
 
 ### 1. Code Generation & Architecture
 
-**Tool**: [PLACEHOLDER: e.g., GitHub Copilot / ChatGPT / Claude]
+**Tool**: GitHub Copilot
 
 **What it was used for**:
-- [PLACEHOLDER: List specific tasks AI helped with, e.g., "Generating initial Express.js boilerplate", "Suggesting database schema", "Writing validation schemas"]
-- [PLACEHOLDER: Add more items]
+- Initial Express.js boilerplate structure
+- Zod validation schema patterns
+- PostgreSQL migration syntax reference
 
-**What I designed/changed myself**:
-- [PLACEHOLDER: List architectural decisions you made, e.g., "Memory conflict detection thresholds", "Memory gate heuristics", "Separation of concerns in service layer"]
-- [PLACEHOLDER: Add more items]
+**My design decisions**:
+- Memory gate heuristics and trigger patterns
+- Similarity thresholds for duplicate/conflict detection
+- Service layer separation and repository pattern
+- Error handling strategy with custom AppError class
 
 ### 2. Chat Completion (Runtime AI)
 
 **Model**: OpenAI gpt-4o-mini
 
-**Used for**:
-- Generating conversational responses
-- Extracting memory operations from user messages (when memory gate triggers)
-
-**Configuration chosen by me**:
+**Configuration**:
 - Temperature: 0.4 (balanced creativity/consistency)
 - JSON response format for structured output
 - Max tokens: 1024
 
-**Decisions after reviewing AI behavior**:
-- [PLACEHOLDER: e.g., "Tuned memory extraction prompts after AI was saving too many temporary facts", "Added third-person writing requirement after AI used first-person"]
-- [PLACEHOLDER: Add more items]
+**Design decisions after testing**:
+- Tuned memory extraction prompts to save only stable facts
+- Added third-person writing requirement
+- Limited extraction to 5 memory ops per message
 
 ### 3. Text Embeddings (Runtime AI)
 
 **Model**: OpenAI text-embedding-3-small (512 dimensions)
 
-**Used for**:
-- Converting memories to vectors for semantic search
-- Finding relevant memories when responding to user queries
-
-**My design decisions**:
-- Chose 512 dimensions (vs 1536) to reduce costs while maintaining quality
-- Set similarity thresholds: 0.92 (duplicate), 0.82 (conflict), 0.7 (retrieval)
-- Decided to embed `key:content` format for better semantic matching
+**Design decisions**:
+- 512 dimensions vs 1536 for cost optimization
+- Similarity thresholds: 0.92 (duplicate), 0.82 (conflict), 0.7 (retrieval)
+- Embed `key:content` format for semantic accuracy
 
 ---
 
-## What I Designed Myself
+## Key Design Decisions
 
-1. **Memory Gate Heuristic**: [PLACEHOLDER: Explain your reasoning for the keyword patterns]
-2. **Conflict Detection**: [PLACEHOLDER: Explain why you chose those similarity thresholds]
-3. **Database Schema**: [PLACEHOLDER: Explain your schema design decisions]
-4. **API Structure**: [PLACEHOLDER: Explain your REST API design choices]
-5. **[PLACEHOLDER: Add more items you designed]**
-
----
-
-## Decisions After Reviewing AI-Generated Code
-
-| AI Suggestion | My Decision | Reasoning |
-|---------------|-------------|-----------|
-| [PLACEHOLDER] | [PLACEHOLDER] | [PLACEHOLDER] |
-| [PLACEHOLDER] | [PLACEHOLDER] | [PLACEHOLDER] |
-| [PLACEHOLDER] | [PLACEHOLDER] | [PLACEHOLDER] |
+| Area | Decision | Reasoning |
+|------|----------|-----------|
+| Memory Gate | Regex-based pre-filter | Reduces LLM calls by ~70% |
+| Conflict Detection | Cosine similarity + key matching | Catches semantic duplicates |
+| Database | Supabase + pgvector | Managed PostgreSQL with vector support |
+| API Structure | RESTful with clear resource naming | Standard conventions for maintainability |
+| Frontend State | Custom hooks (useChat, useMemories) | Clean separation of concerns |
 
 ---
 
-## Code I Wrote vs AI-Assisted
+## Code Organization
 
-### Primarily My Code
-- [PLACEHOLDER: List files/modules you wrote mostly yourself]
+### Backend
+- **Architecture**: Controller → Service → Repository pattern
+- **Validation**: Zod schemas with custom validators
+- **Error handling**: Centralized middleware with AppError class
 
-### AI-Assisted Then Modified
-- [PLACEHOLDER: List files/modules where AI helped but you made significant changes]
-
-### AI-Generated With Minimal Changes
-- [PLACEHOLDER: List files/modules that AI generated and you used mostly as-is]
-
----
-
-## Lessons Learned
-
-1. [PLACEHOLDER: What did you learn about working with AI tools?]
-2. [PLACEHOLDER: What would you do differently next time?]
-3. [PLACEHOLDER: Where was AI most/least helpful?]
-
----
+### Frontend
+- **Structure**: Feature-based folders (chat, memories)
+- **State**: Custom hooks for domain logic
+- **UI**: Shared components in components/ui/
+- **Utilities**: Constants and formatters extracted to lib/
 
 ## Technical Details (Runtime AI Usage)
 

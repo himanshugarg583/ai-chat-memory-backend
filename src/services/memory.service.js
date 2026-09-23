@@ -187,7 +187,7 @@ export const memoryService = {
     for (const op of memoryOps) {
       const parsed = memoryOpSchema.safeParse(op);
       if (!parsed.success) {
-        console.warn('Invalid memory op:', op, parsed.error);
+        console.warn('Invalid memory op skipped:', op?.key, parsed.error.issues[0]?.message);
         continue;
       }
       validOps.push(parsed.data);
@@ -197,11 +197,33 @@ export const memoryService = {
       return results;
     }
 
+    // Bug fix 1: Merge ops that share the same key before embedding
+    const mergedOps = [];
+    const opsByKey = new Map();
+    for (const op of validOps) {
+      const existing = opsByKey.get(op.key);
+      if (!existing) {
+        opsByKey.set(op.key, op);
+        mergedOps.push(op);
+      } else {
+        // Same key appears twice
+        if (op.action === 'remove' || existing.action === 'remove') {
+          // If one is remove, keep the last op
+          const idx = mergedOps.indexOf(existing);
+          mergedOps[idx] = op;
+          opsByKey.set(op.key, op);
+        } else {
+          // Both are upserts - merge content
+          existing.content = `${existing.content}; ${op.content}`;
+        }
+      }
+    }
+
     // Get existing memories for duplicate detection
     const existingMemories = await memoryRepository.getActiveWithEmbeddings(userId);
 
     // Batch embed all upsert contents using key:content format
-    const upsertOps = validOps.filter((op) => op.action === 'upsert' && op.content);
+    const upsertOps = mergedOps.filter((op) => op.action === 'upsert' && op.content);
     let embeddings = [];
     if (upsertOps.length > 0) {
       try {
@@ -216,7 +238,7 @@ export const memoryService = {
     }
 
     let embeddingIndex = 0;
-    for (const op of validOps) {
+    for (const op of mergedOps) {
       try {
         if (op.action === 'upsert' && op.content) {
           const embedding = embeddings[embeddingIndex++];
@@ -280,6 +302,17 @@ export const memoryService = {
             memoryKey: result.memory_key,
             content: result.content,
           });
+
+          // Bug fix 2: Update existingMemories in place after successful upsert
+          const existingIdx = existingMemories.findIndex((m) => m.memory_key === op.key);
+          if (existingIdx !== -1) {
+            existingMemories.splice(existingIdx, 1);
+          }
+          existingMemories.push({
+            memory_key: op.key,
+            content: op.content,
+            embedding,
+          });
         } else if (op.action === 'remove') {
           // Find and supersede the memory
           const existing = await memoryRepository.findActiveByUserAndKey(userId, op.key);
@@ -290,6 +323,12 @@ export const memoryService = {
               memoryKey: op.key,
               content: existing.content,
             });
+
+            // Bug fix 2: Remove from existingMemories after successful remove
+            const existingIdx = existingMemories.findIndex((m) => m.memory_key === op.key);
+            if (existingIdx !== -1) {
+              existingMemories.splice(existingIdx, 1);
+            }
           }
         }
       } catch (error) {

@@ -42,6 +42,7 @@ Memory rules:
 - Questions and requests (what, which, suggest, recommend, how, tell me) must return empty memory_ops unless the same message also states a new fact about the user
 - Never save questions, one-off tasks, general knowledge, or facts about yourself (the assistant)
 - Each operation: { "action": "upsert" | "remove", "key": string, "content": string, "category": string }
+- Return at most ONE op per key. If the user gives several values for the same key, combine them in one content (e.g., "User works with Node.js and Python")
 - Write content in third person, short (e.g., "User works with PostgreSQL")
 - Never write "primarily" unless the user explicitly said so
 - If the user says "also" or "too", MERGE with the existing fact for that key (e.g., "User works with PostgreSQL and MySQL") instead of replacing it

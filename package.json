@@ -8,7 +8,8 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "reembed": "node scripts/reembed.js",
-    "test:gate": "node scripts/test-gate.js"
+    "test:gate": "node scripts/test-gate.js",
+    "test:memory-ops": "node scripts/test-memory-ops.js"
   },
   "keywords": [
     "ai",
