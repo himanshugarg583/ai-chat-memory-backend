@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import multer from 'multer';
 import { healthController } from '../controllers/health.controller.js';
 import { userController } from '../controllers/user.controller.js';
 import { chatController } from '../controllers/chat.controller.js';
@@ -14,19 +13,6 @@ import {
   memoryIdParamSchema,
   memoryQuerySchema,
 } from '../validators/memory.validators.js';
-
-// Multer config for PDF uploads
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'application/pdf') {
-      cb(null, true);
-    } else {
-      cb(new Error('Only PDF files are allowed'));
-    }
-  },
-});
 
 const router = Router();
 
@@ -87,14 +73,6 @@ router.delete(
   requireUser,
   validate({ params: memoryIdParamSchema }),
   memoryController.deleteMemory
-);
-
-// PDF upload route
-router.post(
-  '/memories/upload-pdf',
-  requireUser,
-  upload.single('pdf'),
-  memoryController.uploadPdf
 );
 
 export default router;

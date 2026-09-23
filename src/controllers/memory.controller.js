@@ -1,8 +1,5 @@
 import { memoryService } from '../services/memory.service.js';
 import { success, noContent } from '../utils/response.js';
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const pdfParse = require('pdf-parse');
 
 export const memoryController = {
   /**
@@ -62,72 +59,6 @@ export const memoryController = {
       const { id } = req.params;
       await memoryService.deleteMemory(req.user.id, id);
       return noContent(res);
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  /**
-   * POST /api/memories/upload-pdf
-   * Extract text from PDF and create memories
-   */
-  async uploadPdf(req, res, next) {
-    try {
-      if (!req.file) {
-        return res.status(400).json({
-          error: { code: 'VALIDATION_ERROR', message: 'No PDF file uploaded' },
-        });
-      }
-
-      // Parse PDF
-      const pdfData = await pdfParse(req.file.buffer);
-      const text = pdfData.text.trim();
-
-      if (!text) {
-        return res.status(400).json({
-          error: { code: 'VALIDATION_ERROR', message: 'Could not extract text from PDF' },
-        });
-      }
-
-      // Split text into chunks (max ~500 chars each for better memory units)
-      const chunks = [];
-      const paragraphs = text.split(/\n\n+/);
-      let currentChunk = '';
-
-      for (const para of paragraphs) {
-        const cleaned = para.replace(/\s+/g, ' ').trim();
-        if (!cleaned) continue;
-
-        if (currentChunk.length + cleaned.length > 500) {
-          if (currentChunk) chunks.push(currentChunk.trim());
-          currentChunk = cleaned;
-        } else {
-          currentChunk += (currentChunk ? ' ' : '') + cleaned;
-        }
-      }
-      if (currentChunk) chunks.push(currentChunk.trim());
-
-      // Create memories for each chunk
-      const category = req.body.category || 'general';
-      const createdMemories = [];
-
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        if (chunk.length < 10) continue; // Skip very short chunks
-
-        const memory = await memoryService.createMemory(req.user.id, {
-          content: chunk,
-          category,
-          memoryKey: `pdf_${Date.now()}_${i}`,
-        });
-        createdMemories.push(memory);
-      }
-
-      return success(res, {
-        message: `Created ${createdMemories.length} memories from PDF`,
-        count: createdMemories.length,
-        memories: createdMemories,
-      }, 201);
     } catch (error) {
       next(error);
     }

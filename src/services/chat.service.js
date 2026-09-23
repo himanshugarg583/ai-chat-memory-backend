@@ -57,55 +57,63 @@ export const chatService = {
         config.CHAT_HISTORY_LIMIT
       );
 
-      // Step 3: Memory retrieval (no LLM call)
-      const memoryCount = await memoryRepository.countActive(user.id);
+      // Step 3: Memory retrieval (no LLM call) - wrapped in try/catch to not block chat
       let retrievedMemories = [];
-      let allCandidates = [];
       let existingKeys = [];
 
-      if (config.NODE_ENV === 'development') {
-        console.log(`\n[Memory] Active memories in DB: ${memoryCount}, User ID: ${user.id}`);
-        console.log(`[Memory] Min similarity threshold: ${config.MEMORY_MIN_SIMILARITY}`);
-      }
+      try {
+        const memoryCount = await memoryRepository.countActive(user.id);
+        let allCandidates = [];
 
-      if (memoryCount > 0) {
-        // Expand abbreviations in the query for better semantic matching
-        const expandedQuery = expandAbbreviations(messageContent);
-        if (config.NODE_ENV === 'development' && expandedQuery !== messageContent) {
-          console.log(`[Memory] Expanded query: "${expandedQuery}"`);
-        }
-
-        // Embed the expanded user message for similarity search
-        const queryEmbedding = await embedText(expandedQuery);
         if (config.NODE_ENV === 'development') {
-          console.log(`[Memory] Query embedding generated, dimensions: ${queryEmbedding?.length}`);
+          console.log(`\n[Memory] Active memories in DB: ${memoryCount}, User ID: ${user.id}`);
+          console.log(`[Memory] Min similarity threshold: ${config.MEMORY_MIN_SIMILARITY}`);
         }
 
-        // Get ALL candidates with no threshold (for dev logging)
-        allCandidates = await memoryRepository.matchMemories(
-          queryEmbedding,
-          user.id,
-          20, // Get more for logging
-          0   // No threshold - get all
-        );
+        if (memoryCount > 0) {
+          // Expand abbreviations in the query for better semantic matching
+          const expandedQuery = expandAbbreviations(messageContent);
+          if (config.NODE_ENV === 'development' && expandedQuery !== messageContent) {
+            console.log(`[Memory] Expanded query: "${expandedQuery}"`);
+          }
 
-        // Filter to those meeting threshold
-        retrievedMemories = allCandidates.filter(
-          (m) => m.similarity >= config.MEMORY_MIN_SIMILARITY
-        ).slice(0, config.MEMORY_MATCH_COUNT);
+          // Embed the expanded user message for similarity search
+          const queryEmbedding = await embedText(expandedQuery);
+          if (config.NODE_ENV === 'development') {
+            console.log(`[Memory] Query embedding generated, dimensions: ${queryEmbedding?.length}`);
+          }
 
-        // In development, log ALL candidates with their similarity (including below threshold)
-        if (config.NODE_ENV === 'development' && allCandidates.length > 0) {
-          console.log(`[Memory] All candidates (${allCandidates.length}):`);
-          allCandidates.forEach((m) => {
-            const marker = m.similarity >= config.MEMORY_MIN_SIMILARITY ? '✓' : '✗';
-            console.log(`  ${marker} [${m.memory_key}] "${m.content}" (similarity: ${m.similarity?.toFixed(4)})`);
-          });
-          console.log(`[Memory] Matched memories (above threshold): ${retrievedMemories.length}`);
+          // Get ALL candidates with no threshold (for dev logging)
+          allCandidates = await memoryRepository.matchMemories(
+            queryEmbedding,
+            user.id,
+            20, // Get more for logging
+            0   // No threshold - get all
+          );
+
+          // Filter to those meeting threshold
+          retrievedMemories = allCandidates.filter(
+            (m) => m.similarity >= config.MEMORY_MIN_SIMILARITY
+          ).slice(0, config.MEMORY_MATCH_COUNT);
+
+          // In development, log ALL candidates with their similarity (including below threshold)
+          if (config.NODE_ENV === 'development' && allCandidates.length > 0) {
+            console.log(`[Memory] All candidates (${allCandidates.length}):`);
+            allCandidates.forEach((m) => {
+              const marker = m.similarity >= config.MEMORY_MIN_SIMILARITY ? '✓' : '✗';
+              console.log(`  ${marker} [${m.memory_key}] "${m.content}" (similarity: ${m.similarity?.toFixed(4)})`);
+            });
+            console.log(`[Memory] Matched memories (above threshold): ${retrievedMemories.length}`);
+          }
+
+          // Get only the keys of active memories (not full content) for prompt merge hints
+          existingKeys = await memoryRepository.getActiveKeys(user.id);
         }
-
-        // Get only the keys of active memories (not full content) for prompt merge hints
-        existingKeys = await memoryRepository.getActiveKeys(user.id);
+      } catch (memoryError) {
+        // Memory retrieval failed - log and continue without memories
+        console.error('[Memory] Retrieval failed, continuing without memories:', memoryError.message);
+        retrievedMemories = [];
+        existingKeys = [];
       }
 
       // Populate usedMemories for the response
@@ -189,10 +197,11 @@ export const chatService = {
       // Update local object for response
       userMessage.memory_status = memoryStatus;
     } catch (error) {
-      // LLM call failed - update message status and rethrow
-      if (error.code === 'LLM_UNAVAILABLE') {
+      // Any error - try to update message status to 'failed' (ignore update errors)
+      try {
         await messageRepository.updateMemoryStatus(userMessage.id, 'failed');
-        throw error;
+      } catch (updateError) {
+        console.error('[Chat] Failed to update message status on error:', updateError.message);
       }
       throw error;
     }

@@ -7,15 +7,16 @@
  */
 
 // Keywords that suggest personal/memorable content
+// Note: 'me' and 'main' removed due to high false-positive rate in English
 const PERSONAL_KEYWORDS = [
-  'i', "i'm", 'im', "i've", 'ive', "i'd", 'my', 'me', 'mine',
+  'i', "i'm", 'im', "i've", 'ive', "i'd", 'my', 'mine',
   'we', "we're", 'our', 'us', 'myself',
   "name's",
   'remember',
   'actually', 'now', 'currently',
   'migrated', 'switched', 'prefer',
   // Hindi keywords for personal references
-  'mera', 'meri', 'mujhe', 'main'
+  'mera', 'meri', 'mujhe'
 ];
 
 // Build regex pattern for word-boundary matching

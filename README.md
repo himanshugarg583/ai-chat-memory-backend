@@ -122,8 +122,10 @@ Client → Controller → Service → Repository → Database
 
 The gate triggers on personal pronouns and memory-related terms to avoid unnecessary LLM calls:
 
-- **English**: i, i'm, my, me, we, our, remember, prefer, switched, migrated
-- **Hindi**: mera, meri, mujhe, main
+- **English**: i, i'm, my, we, our, remember, prefer, switched, migrated, actually, now, currently
+- **Hindi**: mera, meri, mujhe
+
+> **Note**: `me` and `main` were removed due to high false-positive rates in English questions.
 
 ---
 
@@ -160,11 +162,12 @@ The gate triggers on personal pronouns and memory-related terms to avoid unneces
 ## Known Limitations
 
 1. **Memory gate is heuristic**: Messages without trigger words (e.g., "Born in Mumbai") won't trigger extraction
-2. **No multi-language support**: Gate keywords are English/Hindi only
-3. **Conflict detection is similarity-based**: May not catch semantic contradictions
-4. **No conversation summarization**: Long conversations increase token usage
-5. **Single-user sessions only**: No shared/team memories
-6. **No memory expiration**: Old memories persist indefinitely
+2. **Keyword gate trade-off**: Removed `me` and `main` from trigger keywords due to high false-positive rate in English questions (e.g., "What is the main difference..."). This means some Hindi sentences using `main` (meaning "I") won't trigger extraction unless other keywords are present. Run `npm run test:gate` to see current behavior.
+3. **No multi-language support**: Gate keywords are English/Hindi only
+4. **Conflict detection is similarity-based**: May not catch semantic contradictions
+5. **No conversation summarization**: Long conversations increase token usage
+6. **Single-user sessions only**: No shared/team memories
+7. **No memory expiration**: Old memories persist indefinitely
 
 ---
 
@@ -218,7 +221,7 @@ The gate triggers on personal pronouns and memory-related terms to avoid unneces
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/health` | Service health check |
-| POST | `/api/users/start-session` | Start anonymous session |
+| POST | `/api/users/start-session` | Login / start anonymous session |
 | POST | `/api/users/me/new-session` | Reset chat, keep memories |
 | GET | `/api/messages` | Get session messages |
 | POST | `/api/chat` | Send message |
