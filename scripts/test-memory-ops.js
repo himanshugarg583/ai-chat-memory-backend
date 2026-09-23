@@ -24,14 +24,13 @@ const config = {
   MEMORY_DUPLICATE_SIMILARITY: 0.95,
 };
 
-// Deterministic fake embedding based on content (ignores key prefix for semantic similarity)
+// Deterministic fake embedding based on full text INCLUDING key prefix (like real embeddings)
+// Case C (same content, different keys) now relies on exact-content check, not embedding similarity
 const fakeEmbedding = (text) => {
-  // Extract content after "key: " to simulate semantic similarity on content only
-  const content = text.includes(': ') ? text.split(': ').slice(1).join(': ') : text;
-  // Create embedding using character positions to ensure very different strings are dissimilar
+  // Use full text including "key: " prefix - different keys = different embeddings
   const vec = new Array(512).fill(0);
-  for (let i = 0; i < content.length && i < 512; i++) {
-    vec[i] = content.charCodeAt(i) / 255;
+  for (let i = 0; i < text.length && i < 512; i++) {
+    vec[i] = text.charCodeAt(i) / 255;
   }
   // Normalize
   const norm = Math.sqrt(vec.reduce((sum, v) => sum + v * v, 0)) || 1;
@@ -183,14 +182,30 @@ const processMemoryOps = async (userId, memoryOps, userMessageId) => {
         const embedding = embeddings[embeddingIndex++];
         if (!embedding) continue;
 
+        const normalizedNew = normalizeContent(op.content);
         const existingWithKey = existingMemories.find((m) => m.memory_key === op.key);
         if (existingWithKey) {
-          if (normalizeContent(op.content) === normalizeContent(existingWithKey.content)) {
+          if (normalizedNew === normalizeContent(existingWithKey.content)) {
             results.push({ action: 'unchanged', memoryKey: op.key, content: op.content });
             continue;
           }
         }
 
+        // Exact-content duplicate check across ALL keys (including batch-saved)
+        const exactDupe = existingMemories.find(
+          (m) => m.memory_key !== op.key && normalizeContent(m.content) === normalizedNew
+        );
+        if (exactDupe) {
+          results.push({
+            action: 'skipped_duplicate',
+            memoryKey: op.key,
+            content: op.content,
+            existingKey: exactDupe.memory_key,
+          });
+          continue;
+        }
+
+        // Embedding similarity check for semantic duplicates
         let isDuplicate = false;
         for (const existing of existingMemories) {
           if (existing.memory_key === op.key) continue;

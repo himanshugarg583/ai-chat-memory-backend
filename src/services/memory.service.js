@@ -74,13 +74,27 @@ export const memoryService = {
     // Check for duplicates/conflicts among existing active memories (skip if replacing)
     if (!replaceMemoryId) {
       const existingMemories = await memoryRepository.getActiveWithEmbeddings(userId);
+      const normalizedNew = normalizeContent(content);
 
+      // First: exact-content check across ALL keys
+      for (const existing of existingMemories) {
+        if (normalizeContent(existing.content) === normalizedNew) {
+          throw errors.duplicateMemory({
+            id: existing.id,
+            memoryKey: existing.memory_key,
+            content: existing.content,
+            similarity: 1.0,
+          });
+        }
+      }
+
+      // Then: embedding similarity check
       for (const existing of existingMemories) {
         if (!existing.embedding) continue;
 
         const similarity = cosineSimilarity(embedding, existing.embedding);
 
-        // Exact duplicate
+        // Semantic duplicate
         if (similarity >= config.MEMORY_DUPLICATE_SIMILARITY) {
           throw errors.duplicateMemory({
             id: existing.id,
@@ -248,13 +262,12 @@ export const memoryService = {
           }
 
           // Check for exact content match with same key
+          const normalizedNew = normalizeContent(op.content);
           const existingWithKey = existingMemories.find(
             (m) => m.memory_key === op.key
           );
           if (existingWithKey) {
-            const normalizedNew = normalizeContent(op.content);
-            const normalizedExisting = normalizeContent(existingWithKey.content);
-            if (normalizedNew === normalizedExisting) {
+            if (normalizedNew === normalizeContent(existingWithKey.content)) {
               // Report as unchanged - do not count toward memory_status
               results.push({
                 action: 'unchanged',
@@ -263,6 +276,20 @@ export const memoryService = {
               });
               continue;
             }
+          }
+
+          // Check for exact-content duplicate across ALL keys (including batch-saved)
+          const exactDupe = existingMemories.find(
+            (m) => m.memory_key !== op.key && normalizeContent(m.content) === normalizedNew
+          );
+          if (exactDupe) {
+            results.push({
+              action: 'skipped_duplicate',
+              memoryKey: op.key,
+              content: op.content,
+              existingKey: exactDupe.memory_key,
+            });
+            continue;
           }
 
           // Check for semantic duplicates with different keys
