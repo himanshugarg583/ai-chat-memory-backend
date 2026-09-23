@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Chat with Memory</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      min-height: 100vh;
+    }
+    .container {
+      display: flex;
+      height: 100vh;
+      max-width: 1400px;
+      margin: 0 auto;
+      gap: 1rem;
+      padding: 1rem;
+    }
+    
+    /* Panels */
+    .panel {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .chat-panel { flex: 2; }
+    .memory-panel { flex: 1; min-width: 300px; }
+    .panel-header {
+      padding: 1rem;
+      background: #2563eb;
+      color: #fff;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .panel-header button {
+      background: rgba(255,255,255,0.2);
+      border: none;
+      color: #fff;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.875rem;
+    }
+    .panel-header button:hover { background: rgba(255,255,255,0.3); }
+    
+    /* Login */
+    #login-screen {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    #login-screen.hidden { display: none; }
+    .login-box {
+      background: #fff;
+      padding: 2rem;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 400px;
+    }
+    .login-box h2 { margin-bottom: 1rem; }
+    .login-box input {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      font-size: 1rem;
+    }
+    .login-box button {
+      width: 100%;
+      padding: 0.75rem;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    .login-box button:hover { background: #1d4ed8; }
+    
+    /* Messages */
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .message {
+      max-width: 80%;
+      padding: 0.75rem 1rem;
+      border-radius: 12px;
+      line-height: 1.5;
+    }
+    .message.user {
+      background: #2563eb;
+      color: #fff;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+    .message.assistant {
+      background: #e5e7eb;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+    .message .meta {
+      font-size: 0.75rem;
+      opacity: 0.7;
+      margin-top: 0.25rem;
+    }
+    
+    /* Chat input */
+    .chat-input {
+      padding: 1rem;
+      border-top: 1px solid #eee;
+      display: flex;
+      gap: 0.5rem;
+    }
+    .chat-input input {
+      flex: 1;
+      padding: 0.75rem;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 1rem;
+    }
+    .chat-input button {
+      padding: 0.75rem 1.5rem;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .chat-input button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+    
+    /* Memories */
+    .memories {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+    }
+    .memory-item {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+    .memory-item .key {
+      font-weight: 600;
+      color: #2563eb;
+      font-size: 0.875rem;
+    }
+    .memory-item .content {
+      margin-top: 0.25rem;
+      color: #374151;
+    }
+    .memory-item .meta {
+      font-size: 0.75rem;
+      color: #9ca3af;
+      margin-top: 0.25rem;
+    }
+    .memory-item .actions {
+      margin-top: 0.5rem;
+      display: flex;
+      gap: 0.5rem;
+    }
+    .memory-item .actions button {
+      padding: 0.25rem 0.5rem;
+      font-size: 0.75rem;
+      border: 1px solid #ddd;
+      background: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .memory-item .actions button.edit { color: #2563eb; border-color: #2563eb; }
+    .memory-item .actions button.delete { color: #dc2626; border-color: #dc2626; }
+    .memory-item.superseded {
+      opacity: 0.5;
+      background: #f3f4f6;
+    }
+    .memory-item.superseded .key { color: #6b7280; }
+    
+    /* Edit form */
+    .memory-edit-form {
+      margin-top: 0.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .memory-edit-form input {
+      padding: 0.5rem;
+      border: 1px solid #2563eb;
+      border-radius: 4px;
+      font-size: 0.875rem;
+    }
+    .memory-edit-form .edit-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .memory-edit-form button {
+      padding: 0.25rem 0.5rem;
+      font-size: 0.75rem;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .memory-edit-form button.save { background: #10b981; color: #fff; border: none; }
+    .memory-edit-form button.cancel { background: #fff; border: 1px solid #ddd; }
+    
+    /* Toggle buttons */
+    .toggle-group {
+      display: flex;
+      gap: 0.25rem;
+      font-size: 0.75rem;
+    }
+    .toggle-group button {
+      padding: 0.25rem 0.5rem;
+      border: 1px solid rgba(255,255,255,0.3);
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .toggle-group button.active {
+      background: rgba(255,255,255,0.3);
+      font-weight: 600;
+    }
+    
+    /* Memory info under messages */
+    .memory-info {
+      margin-top: 0.5rem;
+      font-size: 0.75rem;
+    }
+    .memory-info summary {
+      cursor: pointer;
+      color: #6b7280;
+      font-style: italic;
+    }
+    .memory-info summary:hover { color: #374151; }
+    .memory-info-content {
+      margin-top: 0.25rem;
+      padding: 0.5rem;
+      background: #f9fafb;
+      border-radius: 4px;
+      border: 1px solid #e5e7eb;
+    }
+    .memory-info-item {
+      margin-bottom: 0.25rem;
+      padding: 0.25rem;
+      background: #fff;
+      border-radius: 2px;
+    }
+    .memory-info-item .key { color: #2563eb; font-weight: 500; }
+    .memory-info-item .similarity { color: #9ca3af; }
+    .memory-change { padding: 0.25rem; }
+    .memory-change.created { color: #10b981; }
+    .memory-change.updated { color: #f59e0b; }
+    .memory-change.removed { color: #dc2626; }
+    .memory-change.unchanged { color: #6b7280; }
+    
+    /* Add memory form */
+    .add-memory {
+      padding: 1rem;
+      border-top: 1px solid #eee;
+    }
+    .add-memory input, .add-memory select {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      margin-bottom: 0.5rem;
+      font-size: 0.875rem;
+    }
+    .add-memory button {
+      width: 100%;
+      padding: 0.5rem;
+      background: #10b981;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    
+    /* Status indicator */
+    .status {
+      padding: 0.5rem 1rem;
+      background: #fef3c7;
+      color: #92400e;
+      font-size: 0.875rem;
+      display: none;
+    }
+    .status.error { background: #fee2e2; color: #dc2626; }
+    .status.visible { display: block; }
+    
+    /* User info */
+    .user-info {
+      font-size: 0.875rem;
+      font-weight: normal;
+    }
+  </style>
+</head>
+<body>
+  <!-- Login Screen -->
+  <div id="login-screen">
+    <div class="login-box">
+      <h2>Welcome</h2>
+      <p style="margin-bottom: 1rem; color: #666;">Start chatting with AI</p>
+      <input type="text" id="login-name" placeholder="Name (optional)">
+      <button id="login-btn">Start Chat</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <!-- Chat Panel -->
+    <div class="panel chat-panel">
+      <div class="panel-header">
+        <span>Chat <span class="user-info" id="user-info"></span></span>
+        <button id="new-session-btn">New Session</button>
+      </div>
+      <div class="status" id="status"></div>
+      <div class="messages" id="messages"></div>
+      <div class="chat-input">
+        <input type="text" id="message-input" placeholder="Type a message..." maxlength="4000">
+        <button id="send-btn">Send</button>
+      </div>
+    </div>
+
+    <!-- Memory Panel -->
+    <div class="panel memory-panel">
+      <div class="panel-header">
+        <span>Memories (<span id="memory-count">0</span>)</span>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <div class="toggle-group">
+            <button id="toggle-active" class="active">Active</button>
+            <button id="toggle-all">All</button>
+          </div>
+          <button id="refresh-memories-btn">Refresh</button>
+        </div>
+      </div>
+      <div class="memories" id="memories"></div>
+      <div class="add-memory">
+        <input type="text" id="new-memory-content" placeholder="New memory content...">
+        <select id="new-memory-category">
+          <option value="general">General</option>
+          <option value="personal">Personal</option>
+          <option value="technical">Technical</option>
+          <option value="preference">Preference</option>
+        </select>
+        <button id="add-memory-btn">Add Memory</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = '/api';
+    let currentUser = null;
+    let memoryFilter = 'active'; // 'active' or 'all'
+    let lastChatResponse = null; // Store last chat response for memory info
+
+    // DOM elements
+    const loginScreen = document.getElementById('login-screen');
+    const loginName = document.getElementById('login-name');
+    const loginBtn = document.getElementById('login-btn');
+    const userInfo = document.getElementById('user-info');
+    const newSessionBtn = document.getElementById('new-session-btn');
+    const messagesEl = document.getElementById('messages');
+    const messageInput = document.getElementById('message-input');
+    const sendBtn = document.getElementById('send-btn');
+    const statusEl = document.getElementById('status');
+    const memoriesEl = document.getElementById('memories');
+    const memoryCountEl = document.getElementById('memory-count');
+    const refreshMemoriesBtn = document.getElementById('refresh-memories-btn');
+    const newMemoryContent = document.getElementById('new-memory-content');
+    const newMemoryCategory = document.getElementById('new-memory-category');
+    const addMemoryBtn = document.getElementById('add-memory-btn');
+    const toggleActive = document.getElementById('toggle-active');
+    const toggleAll = document.getElementById('toggle-all');
+
+    // API helper
+    async function api(method, endpoint, body = null) {
+      const opts = {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+      };
+      if (currentUser) {
+        opts.headers['x-user-id'] = currentUser.id;
+      }
+      if (body) {
+        opts.body = JSON.stringify(body);
+      }
+      const res = await fetch(API_BASE + endpoint, opts);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error?.message || 'Request failed');
+      }
+      return data;
+    }
+
+    // Show status message
+    function showStatus(msg, isError = false) {
+      statusEl.textContent = msg;
+      statusEl.className = 'status visible' + (isError ? ' error' : '');
+      setTimeout(() => { statusEl.className = 'status'; }, 5000);
+    }
+
+    // Escape HTML
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Render messages with memory info
+    function renderMessages(messages, lastResponse = null) {
+      messagesEl.innerHTML = messages.map((m, idx) => {
+        let html = `<div class="message ${m.role}">
+          <div>${escapeHtml(m.content)}</div>
+          <div class="meta">${m.role === 'user' && m.memoryStatus ? 'Memory: ' + m.memoryStatus : ''}</div>`;
+        
+        // Add memory info for the last assistant message if we have the response
+        if (m.role === 'assistant' && idx === messages.length - 1 && lastResponse) {
+          const { usedMemories, memoryChanges } = lastResponse;
+          const hasInfo = (usedMemories && usedMemories.length > 0) || (memoryChanges && memoryChanges.length > 0);
+          
+          if (hasInfo) {
+            html += `<div class="memory-info">
+              <details>
+                <summary>Memory details</summary>
+                <div class="memory-info-content">`;
+            
+            if (usedMemories && usedMemories.length > 0) {
+              html += `<div><strong>Memories used:</strong></div>`;
+              usedMemories.forEach(mem => {
+                html += `<div class="memory-info-item">
+                  <span class="key">[${escapeHtml(mem.memoryKey)}]</span> 
+                  ${escapeHtml(mem.content)} 
+                  <span class="similarity">(${(mem.similarity * 100).toFixed(1)}%)</span>
+                </div>`;
+              });
+            }
+            
+            if (memoryChanges && memoryChanges.length > 0) {
+              html += `<div style="margin-top:0.5rem;"><strong>Memory changes:</strong></div>`;
+              memoryChanges.forEach(change => {
+                html += `<div class="memory-change ${change.action}">
+                  ${change.action.toUpperCase()}: [${escapeHtml(change.memoryKey)}] ${escapeHtml(change.content || '')}
+                </div>`;
+              });
+            }
+            
+            html += `</div></details></div>`;
+          }
+        }
+        
+        html += `</div>`;
+        return html;
+      }).join('');
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    // Render memories with edit capability
+    function renderMemories(memories) {
+      const activeCount = memories.filter(m => m.status === 'active').length;
+      memoryCountEl.textContent = memoryFilter === 'active' ? activeCount : `${activeCount}/${memories.length}`;
+      
+      const filtered = memoryFilter === 'active' 
+        ? memories.filter(m => m.status === 'active')
+        : memories;
+      
+      memoriesEl.innerHTML = filtered.map(m => `
+        <div class="memory-item ${m.status === 'superseded' ? 'superseded' : ''}" data-id="${m.id}">
+          <div class="key">${escapeHtml(m.memoryKey)}</div>
+          <div class="content" id="content-${m.id}">${escapeHtml(m.content)}</div>
+          <div class="meta">${m.category} · ${m.source}${m.status === 'superseded' ? ' · superseded' : ''}</div>
+          <div class="actions" id="actions-${m.id}">
+            ${m.status === 'active' ? `<button class="edit" onclick="startEditMemory('${m.id}', '${escapeHtml(m.content).replace(/'/g, "\\'")}')">Edit</button>` : ''}
+            <button class="delete" onclick="deleteMemory('${m.id}')">Delete</button>
+          </div>
+        </div>
+      `).join('') || '<p style="color:#9ca3af;text-align:center;padding:2rem;">No memories yet</p>';
+    }
+
+    // Start editing a memory
+    window.startEditMemory = (id, currentContent) => {
+      const contentEl = document.getElementById(`content-${id}`);
+      const actionsEl = document.getElementById(`actions-${id}`);
+      
+      contentEl.innerHTML = `
+        <div class="memory-edit-form">
+          <input type="text" id="edit-input-${id}" value="${currentContent}">
+          <div class="edit-actions">
+            <button class="save" onclick="saveEditMemory('${id}')">Save</button>
+            <button class="cancel" onclick="loadMemories()">Cancel</button>
+          </div>
+        </div>
+      `;
+      actionsEl.style.display = 'none';
+      document.getElementById(`edit-input-${id}`).focus();
+    };
+
+    // Save edited memory
+    window.saveEditMemory = async (id) => {
+      const input = document.getElementById(`edit-input-${id}`);
+      const newContent = input.value.trim();
+      if (!newContent) return;
+      
+      try {
+        await api('PUT', '/memories/' + id, { content: newContent });
+        await loadMemories();
+        showStatus('Memory updated');
+      } catch (err) {
+        showStatus(err.message, true);
+      }
+    };
+
+    // Start Session
+    loginBtn.addEventListener('click', async () => {
+      try {
+        const data = await api('POST', '/users/start-session', {
+          name: loginName.value.trim() || undefined
+        });
+        currentUser = data.user;
+        loginScreen.classList.add('hidden');
+        userInfo.textContent = currentUser.name ? `(${currentUser.name})` : '';
+        await loadMessages();
+        await loadMemories();
+      } catch (err) {
+        showStatus(err.message, true);
+      }
+    });
+
+    // New session
+    newSessionBtn.addEventListener('click', async () => {
+      try {
+        const data = await api('POST', '/users/me/new-session');
+        currentUser = data.user;
+        messagesEl.innerHTML = '';
+        lastChatResponse = null;
+        showStatus('New session started');
+      } catch (err) {
+        showStatus(err.message, true);
+      }
+    });
+
+    // Send message
+    async function sendMessage() {
+      const msg = messageInput.value.trim();
+      if (!msg || !currentUser) return;
+      
+      sendBtn.disabled = true;
+      messageInput.value = '';
+      
+      // Optimistic UI update
+      const tempEl = document.createElement('div');
+      tempEl.className = 'message user';
+      tempEl.innerHTML = `<div>${escapeHtml(msg)}</div>`;
+      messagesEl.appendChild(tempEl);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      
+      try {
+        const data = await api('POST', '/chat', { message: msg });
+        lastChatResponse = data;
+        await loadMessages();
+        if (data.memoryChanges && data.memoryChanges.length > 0) {
+          await loadMemories();
+          const realChanges = data.memoryChanges.filter(c => !['unchanged', 'skipped_duplicate'].includes(c.action));
+          if (realChanges.length > 0) {
+            showStatus('Memory: ' + realChanges.map(c => c.action + ' ' + c.memoryKey).join(', '));
+          }
+        }
+      } catch (err) {
+        showStatus(err.message, true);
+        lastChatResponse = null;
+        await loadMessages();
+      } finally {
+        sendBtn.disabled = false;
+        messageInput.focus();
+      }
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keypress', e => {
+      if (e.key === 'Enter') sendMessage();
+    });
+
+    // Load messages
+    async function loadMessages() {
+      try {
+        const data = await api('GET', '/messages');
+        renderMessages(data.messages || [], lastChatResponse);
+      } catch (err) {
+        console.error('Failed to load messages:', err);
+      }
+    }
+
+    // Load memories
+    async function loadMemories() {
+      try {
+        const data = await api('GET', '/memories?status=' + memoryFilter);
+        renderMemories(data.memories || []);
+      } catch (err) {
+        console.error('Failed to load memories:', err);
+      }
+    }
+
+    refreshMemoriesBtn.addEventListener('click', loadMemories);
+
+    // Toggle Active/All
+    toggleActive.addEventListener('click', () => {
+      memoryFilter = 'active';
+      toggleActive.classList.add('active');
+      toggleAll.classList.remove('active');
+      loadMemories();
+    });
+
+    toggleAll.addEventListener('click', () => {
+      memoryFilter = 'all';
+      toggleAll.classList.add('active');
+      toggleActive.classList.remove('active');
+      loadMemories();
+    });
+
+    // Add memory
+    addMemoryBtn.addEventListener('click', async () => {
+      const content = newMemoryContent.value.trim();
+      if (!content) return;
+      try {
+        await api('POST', '/memories', {
+          content,
+          category: newMemoryCategory.value
+        });
+        newMemoryContent.value = '';
+        await loadMemories();
+        showStatus('Memory added');
+      } catch (err) {
+        showStatus(err.message, true);
+      }
+    });
+
+    // Delete memory
+    window.deleteMemory = async (id) => {
+      if (!confirm('Delete this memory?')) return;
+      try {
+        await api('DELETE', '/memories/' + id);
+        await loadMemories();
+        showStatus('Memory deleted');
+      } catch (err) {
+        showStatus(err.message, true);
+      }
+    };
+
+    // Enter key on login
+    loginName.addEventListener('keypress', e => {
+      if (e.key === 'Enter') loginBtn.click();
+    });
+  </script>
+</body>
+</html>
