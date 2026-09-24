@@ -17,7 +17,7 @@ A Node.js backend for an AI chat application with persistent memory extraction a
 
 ### Prerequisites
 - Node.js 18+
-- Supabase account (free tier works)
+- Supabase account
 - OpenAI API key
 
 ### 1. Supabase Setup
@@ -30,7 +30,7 @@ A Node.js backend for an AI chat application with persistent memory extraction a
    - `match_memories` RPC for similarity search
    - `upsert_memory` RPC for atomic memory updates
 
-> **Privacy Note**: All data is stored in your Supabase project. User messages and memories contain personal information. Ensure your Supabase project has appropriate access controls. Consider Row Level Security (RLS) for production.
+> **Privacy Note**: All data is stored in Supabase project. User messages and memories contain personal information. Ensure your Supabase project has appropriate access controls. Consider Row Level Security (RLS) for production.
 
 ### 2. Environment Configuration
 
@@ -159,6 +159,107 @@ The gate triggers on personal pronouns and memory-related terms to avoid unneces
 
 ---
 
+## Conflict & Duplicate Handling
+
+### How It Works
+
+When a new memory is created (via chat extraction or manual entry), the system:
+
+1. **Generates an embedding** for the new memory text (512-dimensional vector)
+2. **Searches existing memories** using cosine similarity against all user memories
+3. **Applies threshold rules** to determine the action:
+
+```
+New Memory: "User works at Microsoft"
+          ↓
+   Generate Embedding
+          ↓
+   Compare with existing memories
+          ↓
+   ┌─────────────────────────────────────┐
+   │ Similarity ≥ 0.92 → DUPLICATE       │ → Reject (409 error)
+   │ Similarity ≥ 0.82 → CONFLICT        │ → Warn, offer replace option
+   │ Similarity < 0.82 → UNIQUE          │ → Save normally
+   └─────────────────────────────────────┘
+```
+
+### Examples
+
+| Existing Memory | New Memory | Similarity | Action |
+|-----------------|------------|------------|--------|
+| "User works at Google" | "User works at Google" | ~0.99 | Duplicate - Reject |
+| "User works at Google" | "User is employed at Google" | ~0.94 | Duplicate - Reject |
+| "User works at Google" | "User works at Microsoft" | ~0.85 | Conflict - Warn |
+| "User works at Google" | "User likes pizza" | ~0.30 | Unique - Save |
+
+### Conflict Resolution
+
+When a conflict is detected (0.82-0.92 similarity):
+
+1. **API returns 409** with the conflicting memory details
+2. **Frontend shows dialog** asking user to choose:
+   - **Keep existing**: Discard the new memory
+   - **Replace**: Delete old memory, save new one (via `replaceMemoryId` parameter)
+   - **Keep both**: Force save despite similarity warning
+
+### Why These Thresholds?
+
+- **0.92 (Duplicate)**: Catches rephrased duplicates while allowing genuinely different facts
+- **0.82 (Conflict)**: Identifies potentially contradictory info (same topic, different values)
+- **0.70 (Retrieval)**: Broad enough to find related context without irrelevant noise
+
+---
+
+## Why Embeddings?
+
+### The Problem
+
+Traditional keyword search fails for personal memory retrieval:
+
+| User Query | Stored Memory | Keyword Match? | Semantically Related? |
+|------------|---------------|----------------|----------------------|
+| "What's my job?" | "User works at Google" | ❌ No | ✅ Yes |
+| "favorite food" | "User loves pizza" | ❌ No | ✅ Yes |
+| "programming language" | "User prefers Python" | ❌ No | ✅ Yes |
+
+### The Solution: Vector Embeddings
+
+Embeddings convert text into numerical vectors that capture **semantic meaning**:
+
+```
+"User works at Google"  →  [0.12, -0.45, 0.78, ...] (512 dimensions)
+"What's my job?"        →  [0.15, -0.42, 0.75, ...] (similar direction)
+"User likes pizza"      →  [-0.32, 0.61, 0.05, ...] (different direction)
+```
+
+Similar meanings = similar vectors = high cosine similarity.
+
+### Why text-embedding-3-small (512 dims)?
+
+| Option | Dimensions | Cost | Quality |
+|--------|------------|------|---------|   
+| text-embedding-3-large | 3072 | $$$$ | Best |
+| text-embedding-3-small (1536) | 1536 | $$ | Great |
+| **text-embedding-3-small (512)** | 512 | $ | Good ✓ |
+| text-embedding-ada-002 | 1536 | $$ | Legacy |
+
+**We chose 512 dimensions because:**
+1. **3x cheaper** than 1536-dim version
+2. **Faster** vector operations and smaller storage
+3. **Sufficient quality** for personal fact matching (not research papers)
+4. **pgvector friendly** - smaller indexes, faster queries
+
+### Alternatives Considered
+
+| Approach | Pros | Cons | Why Not |
+|----------|------|------|---------|   
+| Keyword search | Fast, simple | Misses synonyms/paraphrases | Poor recall |
+| Full-text search | Better than keywords | Still lexical | Same issue |
+| LLM for every retrieval | Perfect understanding | Expensive, slow | Cost prohibitive |
+| **Embeddings** | Semantic, fast, cheap | Requires vector DB | ✅ Best balance |
+
+---
+
 ## Known Limitations
 
 1. **Memory gate is heuristic**: Messages without trigger words (e.g., "Born in Mumbai") won't trigger extraction
@@ -235,7 +336,3 @@ The gate triggers on personal pronouns and memory-related terms to avoid unneces
 All endpoints (except health) require `x-user-id` header with the user's UUID.
 
 ---
-
-## License
-
-MIT

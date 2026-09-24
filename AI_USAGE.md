@@ -8,7 +8,7 @@ This document describes how AI tools were used in building this project and the 
 
 ### 1. Code Generation & Architecture
 
-**Tool**: GitHub Copilot
+
 
 **What it was used for**:
 - Initial Express.js boilerplate structure
@@ -102,7 +102,7 @@ When the gate triggers, the LLM receives instructions to:
 
 ### Model: text-embedding-3-small
 
-**Purpose**: Convert text to 1536-dimensional vectors for semantic similarity search.
+**Purpose**: Convert text to 512-dimensional vectors for semantic similarity search.
 
 **Usage**:
 1. **Memory Storage**: Each memory's content is embedded and stored in the `memories` table
@@ -111,7 +111,7 @@ When the gate triggers, the LLM receives instructions to:
 
 ### Configuration
 
-- Dimensions: 1536 (configurable via `EMBEDDING_DIMENSIONS`)
+- Dimensions: 512 (configurable via `EMBEDDING_DIMENSIONS`)
 - Batch processing: Multiple texts embedded in single API call
 
 ### Similarity Thresholds
@@ -169,9 +169,3 @@ Embedding failures during chat don't block the response—memories are simply no
 3. **Memory Match Quality**: Average similarity scores of retrieved memories
 4. **Latency**: LLM and embedding response times
 
-## Security Considerations
-
-1. **API Key Protection**: OpenAI key stored in environment variables, never exposed to client
-2. **User Isolation**: All memory operations are scoped to the authenticated user
-3. **Content Filtering**: Input length limits prevent abuse (default: 4000 chars)
-4. **No PII Logging**: Memory content is not logged in production
