@@ -1,7 +1,3 @@
-/**
- * Prompt builder - pure functions for constructing LLM prompts
- * No I/O, no side effects - just string construction
- */
 
 /**
  * Build the system prompt for chat
